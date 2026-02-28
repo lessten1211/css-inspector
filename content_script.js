@@ -19,7 +19,9 @@
     hoveredElement: null,
     modifications: new Map(), // 存储修改历史: element -> {selector, changes: []}
     highlightOverlay: null,
-    selectedOverlay: null
+    selectedOverlay: null,
+    spacingOverlays: [], // 间距显示层
+    spacingDebounceTimer: null
   };
 
   // === 创建高亮覆盖层 ===
@@ -51,6 +53,356 @@
     overlay.style.left = `${rect.left + scrollX}px`;
     overlay.style.width = `${rect.width}px`;
     overlay.style.height = `${rect.height}px`;
+  }
+
+  // === 隐藏覆盖层 ===
+  function hideOverlay(overlay) {
+    if (overlay) {
+      overlay.style.display = 'none';
+    }
+  }
+
+  // === 显示覆盖层 ===
+  function showOverlay(overlay) {
+    if (overlay) {
+      overlay.style.display = 'block';
+    }
+  }
+
+  // === 创建间距标签 ===
+  function createSpacingLabel(distance, x, y, direction) {
+    const label = document.createElement('div');
+    label.className = 'css-inspector-spacing-label';
+    label.style.cssText = `
+      position: absolute;
+      left: ${x}px;
+      top: ${y}px;
+      background: #FF6B35;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-family: Monaco, monospace;
+      font-weight: bold;
+      pointer-events: none;
+      z-index: 2147483646;
+      white-space: nowrap;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    `;
+    label.textContent = `${Math.round(distance)}px`;
+    document.body.appendChild(label);
+    return label;
+  }
+
+  // === 创建间距线条 ===
+  function createSpacingLine(x1, y1, x2, y2, isHorizontal) {
+    const line = document.createElement('div');
+    line.className = 'css-inspector-spacing-line';
+    
+    const length = isHorizontal ? Math.abs(x2 - x1) : Math.abs(y2 - y1);
+    const left = Math.min(x1, x2);
+    const top = Math.min(y1, y2);
+    
+    line.style.cssText = `
+      position: absolute;
+      left: ${left}px;
+      top: ${top}px;
+      ${isHorizontal ? `width: ${length}px; height: 1px;` : `width: 1px; height: ${length}px;`}
+      background: #FF6B35;
+      pointer-events: none;
+      z-index: 2147483646;
+    `;
+    
+    // 添加箭头端点
+    const arrow1 = document.createElement('div');
+    arrow1.style.cssText = `
+      position: absolute;
+      ${isHorizontal ? 'left: 0; top: -2px; width: 1px; height: 5px;' : 'left: -2px; top: 0; width: 5px; height: 1px;'}
+      background: #FF6B35;
+    `;
+    
+    const arrow2 = document.createElement('div');
+    arrow2.style.cssText = `
+      position: absolute;
+      ${isHorizontal ? `left: ${length}px; top: -2px; width: 1px; height: 5px;` : `left: -2px; top: ${length}px; width: 5px; height: 1px;`}
+      background: #FF6B35;
+    `;
+    
+    line.appendChild(arrow1);
+    line.appendChild(arrow2);
+    document.body.appendChild(line);
+    return line;
+  }
+
+  // === 清除所有间距显示 ===
+  function clearSpacingOverlays() {
+    state.spacingOverlays.forEach(overlay => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    });
+    state.spacingOverlays = [];
+  }
+
+  // === 获取相邻元素 ===
+  function getAdjacentElements(element) {
+    const rect = element.getBoundingClientRect();
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+    
+    const allElements = Array.from(document.querySelectorAll('body *')).filter(el => {
+      // 过滤掉自己、覆盖层和不可见元素
+      if (el === element) return false;
+      if (el.classList.contains('css-inspector-overlay')) return false;
+      if (el.classList.contains('css-inspector-spacing-label')) return false;
+      if (el.classList.contains('css-inspector-spacing-line')) return false;
+      if (el.contains(element)) return false; // 过滤父元素
+      if (element.contains(el)) return false; // 过滤子元素
+      
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      if (style.opacity === '0') return false;
+      
+      return true;
+    });
+    
+    const result = { top: null, right: null, bottom: null, left: null };
+    let minDistances = { top: Infinity, right: Infinity, bottom: Infinity, left: Infinity };
+    
+    allElements.forEach(el => {
+      const elRect = el.getBoundingClientRect();
+      
+      // 检查是否在同一水平或垂直线上（有重叠）
+      const horizontalOverlap = !(elRect.right < rect.left || elRect.left > rect.right);
+      const verticalOverlap = !(elRect.bottom < rect.top || elRect.top > rect.bottom);
+      
+      // 上方元素
+      if (elRect.bottom <= rect.top && horizontalOverlap) {
+        const distance = rect.top - elRect.bottom;
+        if (distance < minDistances.top) {
+          minDistances.top = distance;
+          result.top = { element: el, distance, rect: elRect };
+        }
+      }
+      
+      // 下方元素
+      if (elRect.top >= rect.bottom && horizontalOverlap) {
+        const distance = elRect.top - rect.bottom;
+        if (distance < minDistances.bottom) {
+          minDistances.bottom = distance;
+          result.bottom = { element: el, distance, rect: elRect };
+        }
+      }
+      
+      // 左侧元素
+      if (elRect.right <= rect.left && verticalOverlap) {
+        const distance = rect.left - elRect.right;
+        if (distance < minDistances.left) {
+          minDistances.left = distance;
+          result.left = { element: el, distance, rect: elRect };
+        }
+      }
+      
+      // 右侧元素
+      if (elRect.left >= rect.right && verticalOverlap) {
+        const distance = elRect.left - rect.right;
+        if (distance < minDistances.right) {
+          minDistances.right = distance;
+          result.right = { element: el, distance, rect: elRect };
+        }
+      }
+    });
+    
+    return result;
+  }
+
+  // === 显示两个元素之间的间距 ===
+  function showSpacingInfo(selectedElement, hoveredElement) {
+    clearSpacingOverlays();
+    
+    if (!selectedElement || !hoveredElement || selectedElement === hoveredElement) return;
+    
+    const selectedRect = selectedElement.getBoundingClientRect();
+    const hoveredRect = hoveredElement.getBoundingClientRect();
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+    
+    // 判断是否嵌套：蓝框完全在橙框内部
+    const hoveredInsideSelected = 
+      hoveredRect.left >= selectedRect.left &&
+      hoveredRect.right <= selectedRect.right &&
+      hoveredRect.top >= selectedRect.top &&
+      hoveredRect.bottom <= selectedRect.bottom;
+    
+    // 判断是否嵌套：橙框完全在蓝框内部
+    const selectedInsideHovered = 
+      selectedRect.left >= hoveredRect.left &&
+      selectedRect.right <= hoveredRect.right &&
+      selectedRect.top >= hoveredRect.top &&
+      selectedRect.bottom <= hoveredRect.bottom;
+    
+    if (hoveredInsideSelected) {
+      // 蓝框在橙框内部 - 显示到橙框四边的距离
+      const topDistance = Math.round(hoveredRect.top - selectedRect.top);
+      const bottomDistance = Math.round(selectedRect.bottom - hoveredRect.bottom);
+      const leftDistance = Math.round(hoveredRect.left - selectedRect.left);
+      const rightDistance = Math.round(selectedRect.right - hoveredRect.right);
+      
+      // 上边距
+      if (topDistance > 1) {
+        const midX = scrollX + (hoveredRect.left + hoveredRect.right) / 2;
+        const y1 = scrollY + selectedRect.top;
+        const y2 = scrollY + hoveredRect.top;
+        const line = createSpacingLine(midX, y1, midX, y2, false);
+        const label = createSpacingLabel(topDistance, midX - 15, (y1 + y2) / 2 - 8, 'vertical');
+        state.spacingOverlays.push(line, label);
+      }
+      
+      // 下边距
+      if (bottomDistance > 1) {
+        const midX = scrollX + (hoveredRect.left + hoveredRect.right) / 2;
+        const y1 = scrollY + hoveredRect.bottom;
+        const y2 = scrollY + selectedRect.bottom;
+        const line = createSpacingLine(midX, y1, midX, y2, false);
+        const label = createSpacingLabel(bottomDistance, midX - 15, (y1 + y2) / 2 - 8, 'vertical');
+        state.spacingOverlays.push(line, label);
+      }
+      
+      // 左边距
+      if (leftDistance > 1) {
+        const midY = scrollY + (hoveredRect.top + hoveredRect.bottom) / 2;
+        const x1 = scrollX + selectedRect.left;
+        const x2 = scrollX + hoveredRect.left;
+        const line = createSpacingLine(x1, midY, x2, midY, true);
+        const label = createSpacingLabel(leftDistance, (x1 + x2) / 2 - 15, midY - 18, 'horizontal');
+        state.spacingOverlays.push(line, label);
+      }
+      
+      // 右边距
+      if (rightDistance > 1) {
+        const midY = scrollY + (hoveredRect.top + hoveredRect.bottom) / 2;
+        const x1 = scrollX + hoveredRect.right;
+        const x2 = scrollX + selectedRect.right;
+        const line = createSpacingLine(x1, midY, x2, midY, true);
+        const label = createSpacingLabel(rightDistance, (x1 + x2) / 2 - 15, midY - 18, 'horizontal');
+        state.spacingOverlays.push(line, label);
+      }
+      return;
+    }
+    
+    if (selectedInsideHovered) {
+      // 橙框在蓝框内部 - 显示到蓝框四边的距离
+      const topDistance = Math.round(selectedRect.top - hoveredRect.top);
+      const bottomDistance = Math.round(hoveredRect.bottom - selectedRect.bottom);
+      const leftDistance = Math.round(selectedRect.left - hoveredRect.left);
+      const rightDistance = Math.round(hoveredRect.right - selectedRect.right);
+      
+      // 上边距
+      if (topDistance > 1) {
+        const midX = scrollX + (selectedRect.left + selectedRect.right) / 2;
+        const y1 = scrollY + hoveredRect.top;
+        const y2 = scrollY + selectedRect.top;
+        const line = createSpacingLine(midX, y1, midX, y2, false);
+        const label = createSpacingLabel(topDistance, midX - 15, (y1 + y2) / 2 - 8, 'vertical');
+        state.spacingOverlays.push(line, label);
+      }
+      
+      // 下边距
+      if (bottomDistance > 1) {
+        const midX = scrollX + (selectedRect.left + selectedRect.right) / 2;
+        const y1 = scrollY + selectedRect.bottom;
+        const y2 = scrollY + hoveredRect.bottom;
+        const line = createSpacingLine(midX, y1, midX, y2, false);
+        const label = createSpacingLabel(bottomDistance, midX - 15, (y1 + y2) / 2 - 8, 'vertical');
+        state.spacingOverlays.push(line, label);
+      }
+      
+      // 左边距
+      if (leftDistance > 1) {
+        const midY = scrollY + (selectedRect.top + selectedRect.bottom) / 2;
+        const x1 = scrollX + hoveredRect.left;
+        const x2 = scrollX + selectedRect.left;
+        const line = createSpacingLine(x1, midY, x2, midY, true);
+        const label = createSpacingLabel(leftDistance, (x1 + x2) / 2 - 15, midY - 18, 'horizontal');
+        state.spacingOverlays.push(line, label);
+      }
+      
+      // 右边距
+      if (rightDistance > 1) {
+        const midY = scrollY + (selectedRect.top + selectedRect.bottom) / 2;
+        const x1 = scrollX + selectedRect.right;
+        const x2 = scrollX + hoveredRect.right;
+        const line = createSpacingLine(x1, midY, x2, midY, true);
+        const label = createSpacingLabel(rightDistance, (x1 + x2) / 2 - 15, midY - 18, 'horizontal');
+        state.spacingOverlays.push(line, label);
+      }
+      return;
+    }
+    
+    // 非嵌套情况 - 显示外部间距
+    // 计算水平和垂直重叠
+    const horizontalOverlap = !(selectedRect.right < hoveredRect.left || selectedRect.left > hoveredRect.right);
+    const verticalOverlap = !(selectedRect.bottom < hoveredRect.top || selectedRect.top > hoveredRect.bottom);
+    
+    // 垂直间距（上下）
+    if (horizontalOverlap) {
+      // 蓝色在橙色上方
+      if (hoveredRect.bottom <= selectedRect.top) {
+        const distance = Math.round(selectedRect.top - hoveredRect.bottom);
+        if (distance > 0) {
+          const midX = scrollX + Math.max(selectedRect.left, hoveredRect.left) + 
+                      (Math.min(selectedRect.right, hoveredRect.right) - Math.max(selectedRect.left, hoveredRect.left)) / 2;
+          const y1 = scrollY + hoveredRect.bottom;
+          const y2 = scrollY + selectedRect.top;
+          const line = createSpacingLine(midX, y1, midX, y2, false);
+          const label = createSpacingLabel(distance, midX - 15, (y1 + y2) / 2 - 8, 'vertical');
+          state.spacingOverlays.push(line, label);
+        }
+      }
+      // 蓝色在橙色下方
+      else if (hoveredRect.top >= selectedRect.bottom) {
+        const distance = Math.round(hoveredRect.top - selectedRect.bottom);
+        if (distance > 0) {
+          const midX = scrollX + Math.max(selectedRect.left, hoveredRect.left) + 
+                      (Math.min(selectedRect.right, hoveredRect.right) - Math.max(selectedRect.left, hoveredRect.left)) / 2;
+          const y1 = scrollY + selectedRect.bottom;
+          const y2 = scrollY + hoveredRect.top;
+          const line = createSpacingLine(midX, y1, midX, y2, false);
+          const label = createSpacingLabel(distance, midX - 15, (y1 + y2) / 2 - 8, 'vertical');
+          state.spacingOverlays.push(line, label);
+        }
+      }
+    }
+    
+    // 水平间距（左右）
+    if (verticalOverlap) {
+      // 蓝色在橙色左侧
+      if (hoveredRect.right <= selectedRect.left) {
+        const distance = Math.round(selectedRect.left - hoveredRect.right);
+        if (distance > 0) {
+          const midY = scrollY + Math.max(selectedRect.top, hoveredRect.top) + 
+                      (Math.min(selectedRect.bottom, hoveredRect.bottom) - Math.max(selectedRect.top, hoveredRect.top)) / 2;
+          const x1 = scrollX + hoveredRect.right;
+          const x2 = scrollX + selectedRect.left;
+          const line = createSpacingLine(x1, midY, x2, midY, true);
+          const label = createSpacingLabel(distance, (x1 + x2) / 2 - 15, midY - 18, 'horizontal');
+          state.spacingOverlays.push(line, label);
+        }
+      }
+      // 蓝色在橙色右侧
+      else if (hoveredRect.left >= selectedRect.right) {
+        const distance = Math.round(hoveredRect.left - selectedRect.right);
+        if (distance > 0) {
+          const midY = scrollY + Math.max(selectedRect.top, hoveredRect.top) + 
+                      (Math.min(selectedRect.bottom, hoveredRect.bottom) - Math.max(selectedRect.top, hoveredRect.top)) / 2;
+          const x1 = scrollX + selectedRect.right;
+          const x2 = scrollX + hoveredRect.left;
+          const line = createSpacingLine(x1, midY, x2, midY, true);
+          const label = createSpacingLabel(distance, (x1 + x2) / 2 - 15, midY - 18, 'horizontal');
+          state.spacingOverlays.push(line, label);
+        }
+      }
+    }
   }
 
   // === 隐藏覆盖层 ===
@@ -212,7 +564,9 @@
 
     // 忽略我们自己创建的覆盖层
     let target = e.target;
-    if (target.classList && target.classList.contains('css-inspector-overlay')) {
+    if (target.classList && (target.classList.contains('css-inspector-overlay') || 
+        target.classList.contains('css-inspector-spacing-label') ||
+        target.classList.contains('css-inspector-spacing-line'))) {
       return;
     }
 
@@ -226,6 +580,21 @@
       
       showOverlay(state.highlightOverlay);
       updateOverlay(state.highlightOverlay, target);
+      
+      // 清除之前的防抖计时器
+      if (state.spacingDebounceTimer) {
+        clearTimeout(state.spacingDebounceTimer);
+      }
+      
+      // 清除旧的间距显示
+      clearSpacingOverlays();
+      
+      // 只有在已选中元素时，才显示间距（鼠标停止 300ms 后）
+      if (state.selectedElement) {
+        state.spacingDebounceTimer = setTimeout(() => {
+          showSpacingInfo(state.selectedElement, target);
+        }, 300);
+      }
     }
   }
 
@@ -239,7 +608,9 @@
 
     let target = e.target;
     console.log('Clicked element:', target);
-    if (target.classList && target.classList.contains('css-inspector-overlay')) {
+    if (target.classList && (target.classList.contains('css-inspector-overlay') ||
+        target.classList.contains('css-inspector-spacing-label') ||
+        target.classList.contains('css-inspector-spacing-line'))) {
       return;
     }
 
@@ -256,6 +627,15 @@
 
     // 隐藏 hover 覆盖层
     hideOverlay(state.highlightOverlay);
+    
+    // 清除防抖计时器
+    if (state.spacingDebounceTimer) {
+      clearTimeout(state.spacingDebounceTimer);
+      state.spacingDebounceTimer = null;
+    }
+    
+    // 清除间距显示（选中元素后，需要悬停其他元素才会显示间距）
+    clearSpacingOverlays();
 
     // 获取元素信息并发送到 panel
     const elementInfo = getElementInfo(target);
@@ -277,6 +657,13 @@
   }
 
   // === 停止选择模式 ===
+    clearSpacingOverlays();
+    
+    // 清除防抖计时器
+    if (state.spacingDebounceTimer) {
+      clearTimeout(state.spacingDebounceTimer);
+      state.spacingDebounceTimer = null;
+    }
   function stopPickingMode() {
     state.isPickingMode = false;
     document.body.style.cursor = '';
@@ -454,6 +841,14 @@
     if (state.selectedElement) {
       updateOverlay(state.selectedOverlay, state.selectedElement);
     }
+    if (state.hoveredElement && state.isPickingMode) {
+      updateOverlay(state.highlightOverlay, state.hoveredElement);
+    }
+    // 窗口大小变化时重新计算间距
+    if (state.selectedElement && state.hoveredElement && state.isPickingMode) {
+      clearSpacingOverlays();
+      showSpacingInfo(state.selectedElement, state.hoveredElement);
+    }
   });
 
   // === 监听滚动，更新覆盖层 ===
@@ -463,6 +858,11 @@
     }
     if (state.hoveredElement && state.isPickingMode) {
       updateOverlay(state.highlightOverlay, state.hoveredElement);
+    }
+    // 滚动时重新计算间距
+    if (state.selectedElement && state.hoveredElement && state.isPickingMode) {
+      clearSpacingOverlays();
+      showSpacingInfo(state.selectedElement, state.hoveredElement);
     }
   }, true);
 
