@@ -1,0 +1,21 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <-dir -keep-format -f Background -->
+  <rect width="128" height="128" rx="24" fill="url(#grad)"/>
+  
+  <-dir -keep-format -f Magnifying glass circle -->
+  <circle cx="50" cy="50" r="28" fill="none" stroke="white" stroke-width="6"/>
+  
+  <-dir -keep-format -f Magnifying glass handle -->
+  <line x1="70" y1="70" x2="95" y2="95" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  
+  <-dir -keep-format -f CSS brackets -->
+  <path d="M 35 45 L 30 50 L 35 55" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 65 45 L 70 50 L 65 55" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

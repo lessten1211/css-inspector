@@ -1,0 +1,449 @@
+/**
+ * Panel Script - Side Panel UI 逻辑
+ * 处理用户交互、与 content script 通信、显示元素信息
+ */
+
+(function() {
+  'use strict';
+  
+  console.log('=== Panel.js IIFE started ===');
+
+  // === 状态管理 ===
+  console.log('Step 1: Defining state...');
+  const state = {
+    currentElement: null,
+    isPicking: false,
+    modifications: [],
+    activeTab: null
+  };
+  console.log('Step 2: State defined');
+
+  // === DOM 元素引用（将在 init 中初始化）===
+  console.log('Step 3: Declaring elements...');
+  let elements = {};
+  console.log('Step 4: Elements declared');
+
+  // === 工具函数 ===
+  console.log('Step 5: Defining functions...');
+  
+  // 显示状态消息
+  function showStatus(message, type = 'info', duration = 3000) {
+    elements.statusMessage.textContent = message;
+    elements.statusMessage.className = `status-message ${type}`;
+    
+    if (duration > 0) {
+      setTimeout(() => {
+        elements.statusMessage.textContent = '';
+        elements.statusMessage.className = 'status-message';
+      }, duration);
+    }
+  }
+
+  // 获取活动标签页
+  async function getActiveTab() {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs[0];
+  }
+
+  // 确保 content script 已加载
+  async function ensureContentScript(tabId) {
+    try {
+      console.log('Checking if content script is loaded for tab:', tabId);
+      // 尝试 ping content script
+      await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+      console.log('Content script already loaded');
+      return true;
+    } catch (error) {
+      console.log('Content script not loaded, injecting...');
+      // Content script 未加载，手动注入
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['content_script.js']
+        });
+        // 等待一小段时间让 content script 初始化
+        await new Promise(resolve => setTimeout(resolve, 200));
+        console.log('Content script injected successfully');
+        return true;
+      } catch (injectError) {
+        console.error('Failed to inject content script:', injectError);
+        return false;
+      }
+    }
+  }
+
+  // 发送消息到 content script
+  async function sendToContent(action, data = {}) {
+    try {
+      const tab = await getActiveTab();
+      if (!tab) {
+        throw new Error('No active tab');
+      }
+
+      // 确保 content script 已加载
+      const isReady = await ensureContentScript(tab.id);
+      if (!isReady) {
+        throw new Error('Failed to load content script');
+      }
+
+      const message = { action, ...data };
+      return await chrome.tabs.sendMessage(tab.id, message);
+    } catch (error) {
+      console.error('Failed to send message to content script:', error);
+      showStatus(`连接失败，请刷新页面后重试`, 'error');
+      return { success: false, error: error.message };
+    }
+  }
+
+  // === 选择模式 ===
+  
+  async function togglePickingMode() {
+    console.log('togglePickingMode called, current state:', state.isPicking);
+    if (state.isPicking) {
+      // 停止选择
+      const response = await sendToContent('stopPicking');
+      console.log('stopPicking response:', response);
+      if (response?.success) {
+        state.isPicking = false;
+        elements.pickButton.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M3 2l10 6-4 1-1 4-5-11z"/>
+          </svg>
+          Start Picking
+        `;
+        elements.pickButton.classList.remove('active');
+        showStatus('Stopped picking mode', 'info');
+      }
+    } else {
+      // 开始选择
+      console.log('Starting picking mode...');
+      const response = await sendToContent('startPicking');
+      console.log('startPicking response:', response);
+      if (response?.success) {
+        state.isPicking = true;
+        elements.pickButton.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          Stop Picking
+        `;
+        elements.pickButton.classList.add('active');
+        showStatus('点击页面元素进行选择，可连续选择多个元素', 'info', 0);
+      }
+    }
+  }
+
+  // === 显示元素信息 ===
+  
+  function displayElementInfo(elementData) {
+    console.log('displayElementInfo called with:', elementData);
+    if (!elementData) return;
+
+    state.currentElement = elementData;
+
+    // 隐藏空状态，显示所有卡片
+    elements.emptyState.classList.add('hidden');
+    elements.elementCard.classList.remove('hidden');
+    elements.boxModelCard.classList.remove('hidden');
+    elements.elementPropsCard.classList.remove('hidden');
+    elements.textPropsCard.classList.remove('hidden');
+    elements.colorsCard.classList.remove('hidden');
+
+    // 元素标签
+    elements.elementTagLabel.textContent = elementData.tagName.toUpperCase();
+    elements.elementTagName.textContent = elementData.tagName;
+    
+    // ID
+    if (elementData.id) {
+      elements.elementId.textContent = '#' + elementData.id;
+      elements.elementIdRow.style.display = 'flex';
+    } else {
+      elements.elementIdRow.style.display = 'none';
+    }
+    
+    // Classes
+    if (elementData.classes.length > 0) {
+      elements.elementClasses.textContent = '.' + elementData.classes.join(', .');
+      elements.elementClassRow.style.display = 'flex';
+    } else {
+      elements.elementClassRow.style.display = 'none';
+    }
+    
+    // Selector
+    elements.elementSelector.textContent = elementData.selector;
+
+    // Element Properties
+    const styles = elementData.computedStyles;
+    elements.elemWidth.value = styles.width || '';
+    elements.elemHeight.value = styles.height || '';
+    elements.elemDisplay.value = styles.display || '';
+    elements.elemPosition.value = styles.position || '';
+
+    // Text Properties
+    elements.fontFamily.value = styles.fontFamily || '';
+    elements.fontSize.value = styles.fontSize || '';
+    elements.lineHeight.value = styles.lineHeight || '';
+    elements.fontWeight.value = styles.fontWeight || '';
+    
+    const color = styles.color || '#000000';
+    elements.textColor.value = color;
+    elements.textColorBox.style.backgroundColor = color;
+    elements.textColor2.value = color;
+    elements.textColorBox2.style.backgroundColor = color;
+
+    // Colors
+    const bgColor = styles.backgroundColor || 'transparent';
+    elements.bgColor.value = bgColor;
+    elements.bgColorBox.style.backgroundColor = bgColor;
+
+    // Box Model
+    displayBoxModel(elementData.boxModel);
+
+    // 显示提示消息
+    showStatus('✏️ Click on any value to edit CSS properties', 'info', 4000);
+  }
+
+  // === 显示 Box Model ===
+  
+  function displayBoxModel(box) {
+    if (!box) return;
+
+    elements.marginTop.textContent = (box.margin.top || 0).toFixed(0);
+    elements.marginRight.textContent = (box.margin.right || 0).toFixed(0);
+    elements.marginBottom.textContent = (box.margin.bottom || 0).toFixed(0);
+    elements.marginLeft.textContent = (box.margin.left || 0).toFixed(0);
+
+    elements.borderTop.textContent = (box.border.top || 0).toFixed(0);
+    elements.borderRight.textContent = (box.border.right || 0).toFixed(0);
+    elements.borderBottom.textContent = (box.border.bottom || 0).toFixed(0);
+    elements.borderLeft.textContent = (box.border.left || 0).toFixed(0);
+
+    elements.paddingTop.textContent = (box.padding.top || 0).toFixed(0);
+    elements.paddingRight.textContent = (box.padding.right || 0).toFixed(0);
+    elements.paddingBottom.textContent = (box.padding.bottom || 0).toFixed(0);
+    elements.paddingLeft.textContent = (box.padding.left || 0).toFixed(0);
+
+    const width = (box.content.width || 0).toFixed(0);
+    const height = (box.content.height || 0).toFixed(0);
+    elements.contentSize.textContent = `${width} × ${height}`;
+  }
+
+  // === 处理属性输入修改 ===
+  
+  async function handlePropInputChange(event) {
+    const input = event.target;
+    const property = input.dataset.property;
+    const value = input.value;
+    
+    if (!property || !state.currentElement) {
+      return;
+    }
+
+    // 应用样式
+    const response = await sendToContent('applyStyle', {
+      selector: state.currentElement.selector,
+      property,
+      value
+    });
+
+    if (response?.success) {
+      showStatus(`✓ Applied: ${property} = ${value}`, 'success', 2000);
+      
+      // 更新 color box 如果是颜色相关属性
+      if (property === 'color') {
+        elements.textColorBox.style.backgroundColor = value;
+        elements.textColorBox2.style.backgroundColor = value;
+      } else if (property === 'background-color') {
+        elements.bgColorBox.style.backgroundColor = value;
+      }
+    } else {
+      showStatus(`✗ Failed to apply: ${response?.error || 'Unknown error'}`, 'error');
+    }
+  }
+
+  // === 复制选择器 ===
+  
+  function copySelector() {
+    const selector = elements.elementSelector.textContent;
+    navigator.clipboard.writeText(selector).then(() => {
+      showStatus('选择器已复制', 'success');
+    }).catch(err => {
+      showStatus('复制失败', 'error');
+    });
+  }
+
+  // === 刷新元素 ===
+  
+  async function refreshElement() {
+    const response = await sendToContent('getSelectedElement');
+    
+    if (response?.success && response.data) {
+      displayElementInfo(response.data);
+    } else {
+      showStatus('刷新失败', 'error');
+    }
+  }
+
+  // === 轮询元素数据 ===  // === 监听来自 storage 的元素数据 ===
+  
+  function pollForElementData() {
+    let lastTimestamp = 0;
+    
+    setInterval(async () => {
+      const result = await chrome.storage.local.get(['latestElementData', 'timestamp']);
+      
+      if (result.latestElementData && result.timestamp > lastTimestamp) {
+        lastTimestamp = result.timestamp;
+        console.log('New element data received:', result.latestElementData);
+        
+        const data = result.latestElementData;
+        if (data.action === 'elementSelected') {
+          displayElementInfo(data.data);
+        }
+      }
+    }, 500);
+  }
+
+  // === 事件监听器 ===
+  
+  function setupEventListeners() {
+    console.log('=== Setting up event listeners ===');
+    
+    // Picking 按钮
+    if (elements.pickButton) {
+      console.log('✅ Adding click listener to pickButton');
+      elements.pickButton.addEventListener('click', () => {
+        console.log('🎯 Pick button CLICKED!');
+        togglePickingMode();
+      });
+    } else {
+      console.error('❌ pickButton element not found in setupEventListeners!');
+    }
+    
+    // 刷新按钮
+    if (elements.refreshButton) {
+      elements.refreshButton.addEventListener('click', refreshElement);
+      console.log('refreshButton listener added');
+    }
+    
+    // 复制选择器
+    if (elements.copySelector) {
+      elements.copySelector.addEventListener('click', copySelector);
+      console.log('copySelector listener added');
+    }
+    
+    // 所有 prop-input 的事件监听
+    const propInputs = document.querySelectorAll('.prop-input');
+    console.log('Found', propInputs.length, 'prop-input elements');
+    propInputs.forEach(input => {
+      input.addEventListener('blur', handlePropInputChange);
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          input.blur();
+        }
+      });
+    });
+    
+    console.log('Event listeners setup complete');
+  }
+
+  // === 初始化 ===
+  
+  function init() {
+    console.log('=== CSS Inspector panel init() called ===');
+    
+    // 初始化所有 DOM 元素引用
+    elements = {
+      pickButton: document.getElementById('pickButton'),
+      refreshButton: document.getElementById('refreshButton'),
+      
+      // Cards
+      emptyState: document.getElementById('emptyState'),
+      elementCard: document.getElementById('elementCard'),
+      boxModelCard: document.getElementById('boxModelCard'),
+      elementPropsCard: document.getElementById('elementPropsCard'),
+      textPropsCard: document.getElementById('textPropsCard'),
+      colorsCard: document.getElementById('colorsCard'),
+      
+      // Element Info
+      elementTagLabel: document.getElementById('elementTagLabel'),
+      elementTagName: document.getElementById('elementTagName'),
+      elementId: document.getElementById('elementId'),
+      elementIdRow: document.getElementById('elementIdRow'),
+      elementClasses: document.getElementById('elementClasses'),
+      elementClassRow: document.getElementById('elementClassRow'),
+      elementSelector: document.getElementById('elementSelector'),
+      copySelector: document.getElementById('copySelector'),
+      
+      // Element Properties
+      elemWidth: document.getElementById('elemWidth'),
+      elemHeight: document.getElementById('elemHeight'),
+      elemDisplay: document.getElementById('elemDisplay'),
+      elemPosition: document.getElementById('elemPosition'),
+      
+      // Text Properties
+      fontFamily: document.getElementById('fontFamily'),
+      fontSize: document.getElementById('fontSize'),
+      lineHeight: document.getElementById('lineHeight'),
+      fontWeight: document.getElementById('fontWeight'),
+      textColor: document.getElementById('textColor'),
+      textColorBox: document.getElementById('textColorBox'),
+      
+      // Colors
+      bgColor: document.getElementById('bgColor'),
+      bgColorBox: document.getElementById('bgColorBox'),
+      textColor2: document.getElementById('textColor2'),
+      textColorBox2: document.getElementById('textColorBox2'),
+      
+      // Box Model
+      marginTop: document.getElementById('marginTop'),
+      marginRight: document.getElementById('marginRight'),
+      marginBottom: document.getElementById('marginBottom'),
+      marginLeft: document.getElementById('marginLeft'),
+      borderTop: document.getElementById('borderTop'),
+      borderRight: document.getElementById('borderRight'),
+      borderBottom: document.getElementById('borderBottom'),
+      borderLeft: document.getElementById('borderLeft'),
+      paddingTop: document.getElementById('paddingTop'),
+      paddingRight: document.getElementById('paddingRight'),
+      paddingBottom: document.getElementById('paddingBottom'),
+      paddingLeft: document.getElementById('paddingLeft'),
+      contentSize: document.getElementById('contentSize'),
+      
+      // Status
+      statusMessage: document.getElementById('statusMessage')
+    };
+    
+    console.log('pickButton element:', elements.pickButton);
+    
+    if (!elements.pickButton) {
+      console.error('❌ Critical error: pickButton not found!');
+      const statusEl = document.getElementById('statusMessage');
+      if (statusEl) {
+        statusEl.textContent = '❌ 错误：pickButton 未找到';
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'red';
+        statusEl.style.color = 'white';
+      }
+      return;
+    }
+    
+    console.log('✅ pickButton found, setting up listeners...');
+    setupEventListeners();
+    pollForElementData();
+    
+    showStatus('🎯 Click "Start Picking" to select an element on the page', 'info', 5000);
+  }
+
+  // 页面加载完成后初始化
+  console.log('=== IIFE: Checking document readyState:', document.readyState);
+  if (document.readyState === 'loading') {
+    console.log('=== IIFE: Adding DOMContentLoaded listener');
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    console.log('=== IIFE: DOM already loaded, calling init()');
+    init();
+  }
+  
+  console.log('=== IIFE: End of IIFE execution ===');
+})();

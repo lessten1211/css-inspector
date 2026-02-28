@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS Inspector</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div class="panel-container">
+    <!-- Fixed Header -->
+    <header class="panel-header">
+      <h1 class="panel-title">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M10 2C5.58 2 2 5.58 2 10s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/>
+          <circle cx="10" cy="10" r="3"/>
+        </svg>
+        CSS Inspector
+      </h1>
+      <button id="pickButton" class="btn btn-primary" title="选择页面元素">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M3 2l10 6-4 1-1 4-5-11z"/>
+        </svg>
+        Start Picking
+      </button>
+    </header>
+
+    <!-- Scrollable Content -->
+    <div class="panel-content">
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="32" cy="32" r="20"/>
+          <path d="M32 22v20M22 32h20"/>
+        </svg>
+        <p>Click "Start Picking" to select an element</p>
+      </div>
+
+      <!-- Element Info Card -->
+      <div id="elementCard" class="info-card hidden">
+        <div class="card-header">
+          <div class="element-tag">
+            <span id="elementTagLabel" class="tag-label">Div</span>
+            <span id="elementTagName" class="tag-name">div</span>
+          </div>
+          <button id="refreshButton" class="icon-btn" title="刷新元素信息">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M13.65 2.35C12.2.9 10.21 0 8 0 3.58 0 0 3.58 0 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="card-content">
+          <div class="property-row" id="elementIdRow">
+            <span class="prop-label">ID</span>
+            <span id="elementId" class="prop-value"></span>
+          </div>
+          <div class="property-row" id="elementClassRow">
+            <span class="prop-label">Classes</span>
+            <span id="elementClasses" class="prop-value"></span>
+          </div>
+          <div class="property-row selector-row">
+            <span class="prop-label">Selector</span>
+            <code id="elementSelector" class="selector-code"></code>
+            <button id="copySelector" class="icon-btn" title="复制选择器">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4 2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Box Model Card -->
+      <div id="boxModelCard" class="info-card hidden">
+        <div class="card-header">
+          <div class="card-title">Box Model</div>
+        </div>
+        <div class="card-content">
+          <div class="box-model">
+            <div class="box-layer margin-layer">
+              <span class="box-label">margin</span>
+              <span id="marginTop" class="box-value top"></span>
+              <span id="marginRight" class="box-value right"></span>
+              <span id="marginBottom" class="box-value bottom"></span>
+              <span id="marginLeft" class="box-value left"></span>
+              <div class="box-layer border-layer">
+                <span class="box-label">border</span>
+                <span id="borderTop" class="box-value top"></span>
+                <span id="borderRight" class="box-value right"></span>
+                <span id="borderBottom" class="box-value bottom"></span>
+                <span id="borderLeft" class="box-value left"></span>
+                <div class="box-layer padding-layer">
+                  <span class="box-label">padding</span>
+                  <span id="paddingTop" class="box-value top"></span>
+                  <span id="paddingRight" class="box-value right"></span>
+                  <span id="paddingBottom" class="box-value bottom"></span>
+                  <span id="paddingLeft" class="box-value left"></span>
+                  <div class="box-layer content-layer">
+                    <div id="contentSize" class="content-size"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Element Properties Card -->
+      <div id="elementPropsCard" class="info-card hidden">
+        <div class="card-header">
+          <div class="card-title">Element Properties</div>
+        </div>
+        <div class="card-content">
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Width</span>
+            <input type="text" id="elemWidth" class="prop-input" data-property="width" placeholder="e.g., 200px, 50%, auto">
+          </div>
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Height</span>
+            <input type="text" id="elemHeight" class="prop-input" data-property="height" placeholder="e.g., 100px, auto">
+          </div>
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Display</span>
+            <input type="text" id="elemDisplay" class="prop-input" data-property="display" placeholder="e.g., block, flex, inline">
+          </div>
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Position</span>
+            <input type="text" id="elemPosition" class="prop-input" data-property="position" placeholder="e.g., relative, absolute">
+          </div>
+        </div>
+      </div>
+
+      <!-- Text Properties Card -->
+      <div id="textPropsCard" class="info-card hidden">
+        <div class="card-header">
+          <div class="card-title">Text Properties</div>
+        </div>
+        <div class="card-content">
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Font Family</span>
+            <input type="text" id="fontFamily" class="prop-input" data-property="font-family" placeholder="e.g., Arial, sans-serif">
+          </div>
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Font Size</span>
+            <input type="text" id="fontSize" class="prop-input" data-property="font-size" placeholder="e.g., 16px, 1.2em">
+          </div>
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Line Height</span>
+            <input type="text" id="lineHeight" class="prop-input" data-property="line-height" placeholder="e.g., 1.5, 24px">
+          </div>
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Font Weight</span>
+            <input type="text" id="fontWeight" class="prop-input" data-property="font-weight" placeholder="e.g., 400, bold">
+          </div>
+          <div class="property-row">
+            <span class="prop-label" title="Click the value to edit">Text Color</span>
+            <div class="color-value">
+              <span id="textColorBox" class="color-box" title="Current text color"></span>
+              <input type="text" id="textColor" class="prop-input" data-property="color" placeholder="e.g., #333, rgb(255,0,0)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Colors Card -->
+      <div id="colorsCard" class="info-card hidden">
+        <div class="card-header">
+          <div class="card-title">Colors</div>
+        </div>
+        <div class="card-content">
+          <div class="color-row">
+            <span class="prop-label" title="Click the value to edit">Background</span>
+            <div class="color-value">
+              <span id="bgColorBox" class="color-box" title="Current background color"></span>
+              <input type="text" id="bgColor" class="prop-input" data-property="background-color" placeholder="e.g., #fff, transparent">
+            </div>
+          </div>
+          <div class="color-row">
+            <span class="prop-label" title="Click the value to edit">Text</span>
+            <div class="color-value">
+              <span id="textColorBox2" class="color-box" title="Current text color"></span>
+              <input type="text" id="textColor2" class="prop-input" data-property="color" placeholder="e.g., #000, rgba(0,0,0,0.8)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="panel-footer">
+      <div id="statusMessage" class="status-message"></div>
+    </footer>
+  </div>
+
+  <script src="panel.js"></script>
