@@ -671,7 +671,24 @@
     document.removeEventListener('mousemove', handleMouseMove, true);
     document.removeEventListener('click', handleClick, true);
     
+    // 隐藏蓝色悬停框
     hideOverlay(state.highlightOverlay);
+    
+    // 隐藏橙色选中框
+    hideOverlay(state.selectedOverlay);
+    
+    // 清除间距显示
+    clearSpacingOverlays();
+    
+    // 清除防抖计时器
+    if (state.spacingDebounceTimer) {
+      clearTimeout(state.spacingDebounceTimer);
+      state.spacingDebounceTimer = null;
+    }
+    
+    // 清除元素引用
+    state.hoveredElement = null;
+    state.selectedElement = null;
   }
 
   // === 应用样式修改 ===
@@ -772,7 +789,7 @@
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log('Content script received message:', request);
     try {
-      switch (request.action) {
+      switch (request.action || request.type) {
         case 'ping':
           console.log('Ping received, responding...');
           sendResponse({ success: true });
@@ -785,6 +802,13 @@
           break;
 
         case 'stopPicking':
+          stopPickingMode();
+          sendResponse({ success: true });
+          break;
+        
+        case 'cleanup':
+          // 清理所有覆盖层和状态（插件关闭时）
+          console.log('cleanup message received');
           stopPickingMode();
           sendResponse({ success: true });
           break;

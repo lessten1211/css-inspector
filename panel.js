@@ -272,19 +272,7 @@
     });
   }
 
-  // === 刷新元素 ===
-  
-  async function refreshElement() {
-    const response = await sendToContent('getSelectedElement');
-    
-    if (response?.success && response.data) {
-      displayElementInfo(response.data);
-    } else {
-      showStatus('刷新失败', 'error');
-    }
-  }
-
-  // === 轮询元素数据 ===  // === 监听来自 storage 的元素数据 ===
+  // === 轮询元素数据 ===
   
   function pollForElementData() {
     let lastTimestamp = 0;
@@ -320,12 +308,6 @@
       console.error('❌ pickButton element not found in setupEventListeners!');
     }
     
-    // 刷新按钮
-    if (elements.refreshButton) {
-      elements.refreshButton.addEventListener('click', refreshElement);
-      console.log('refreshButton listener added');
-    }
-    
     // 复制选择器
     if (elements.copySelector) {
       elements.copySelector.addEventListener('click', copySelector);
@@ -355,7 +337,6 @@
     // 初始化所有 DOM 元素引用
     elements = {
       pickButton: document.getElementById('pickButton'),
-      refreshButton: document.getElementById('refreshButton'),
       
       // Cards
       emptyState: document.getElementById('emptyState'),
@@ -433,6 +414,40 @@
     pollForElementData();
     
     showStatus('🎯 Click "Start Picking" to select an element on the page', 'info', 5000);
+    
+    // 监听窗口关闭事件，清理页面上的覆盖层
+    window.addEventListener('beforeunload', async () => {
+      try {
+        const tab = await getActiveTab();
+        if (tab) {
+          chrome.tabs.sendMessage(tab.id, { 
+            type: 'cleanup'
+          }).catch(() => {
+            // 忽略错误，tab 可能已经关闭
+          });
+        }
+      } catch (error) {
+        console.log('Cleanup on beforeunload:', error);
+      }
+    });
+    
+    // 监听 visibilitychange 事件，当 panel 隐藏时也清理
+    document.addEventListener('visibilitychange', async () => {
+      if (document.hidden) {
+        try {
+          const tab = await getActiveTab();
+          if (tab) {
+            chrome.tabs.sendMessage(tab.id, { 
+              type: 'cleanup'
+            }).catch(() => {
+              // 忽略错误
+            });
+          }
+        } catch (error) {
+          console.log('Cleanup on visibility change:', error);
+        }
+      }
+    });
   }
 
   // 页面加载完成后初始化
