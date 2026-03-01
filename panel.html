@@ -151,8 +151,9 @@
           <div class="property-row">
             <span class="prop-label" title="Click the value to edit">Text Color</span>
             <div class="color-value">
-              <span id="textColorBox" class="color-box" title="Current text color"></span>
+              <span id="textColorBox" class="color-box" title="Click to pick color"></span>
               <input type="text" id="textColor" class="prop-input" data-property="color" placeholder="e.g., #333, rgb(255,0,0)">
+              <input type="color" id="textColorPicker" class="hidden-picker">
             </div>
           </div>
         </div>
@@ -167,15 +168,19 @@
           <div class="color-row">
             <span class="prop-label" title="Click the value to edit">Background</span>
             <div class="color-value">
-              <span id="bgColorBox" class="color-box" title="Current background color"></span>
+              <span id="bgColorBox" class="color-box" title="Click to pick color"></span>
               <input type="text" id="bgColor" class="prop-input" data-property="background-color" placeholder="e.g., #fff, transparent">
+              <input type="color" id="bgColorPicker" class="hidden-picker">
             </div>
           </div>
+          <!-- 渐变调色板容器 -->
+          <div id="bgGradientPickers" class="gradient-pickers hidden"></div>
           <div class="color-row">
             <span class="prop-label" title="Click the value to edit">Text</span>
             <div class="color-value">
-              <span id="textColorBox2" class="color-box" title="Current text color"></span>
+              <span id="textColorBox2" class="color-box" title="Click to pick color"></span>
               <input type="text" id="textColor2" class="prop-input" data-property="color" placeholder="e.g., #000, rgba(0,0,0,0.8)">
+              <input type="color" id="textColorPicker2" class="hidden-picker">
             </div>
           </div>
         </div>

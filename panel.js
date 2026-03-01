@@ -186,15 +186,39 @@
     elements.fontWeight.value = styles.fontWeight || '';
     
     const color = styles.color || '#000000';
+    const colorHex = rgbToHex(color) || color;
     elements.textColor.value = color;
     elements.textColorBox.style.backgroundColor = color;
     elements.textColor2.value = color;
     elements.textColorBox2.style.backgroundColor = color;
+    if (elements.textColorPicker && colorHex.startsWith('#')) {
+      elements.textColorPicker.value = colorHex;
+    }
+    if (elements.textColorPicker2 && colorHex.startsWith('#')) {
+      elements.textColorPicker2.value = colorHex;
+    }
 
     // Colors
     const bgColor = styles.backgroundColor || 'transparent';
+    const bgColorHex = rgbToHex(bgColor) || bgColor;
     elements.bgColor.value = bgColor;
     elements.bgColorBox.style.backgroundColor = bgColor;
+    if (elements.bgColorPicker && bgColorHex.startsWith('#')) {
+      elements.bgColorPicker.value = bgColorHex;
+    }
+    
+    // 检查是否有渐变背景
+    const background = styles.background || '';
+    if (background.includes('gradient')) {
+      elements.bgColor.value = background;
+      elements.bgColorBox.style.background = background;
+      handleGradientValue(background);
+    } else if (bgColor.includes('gradient')) {
+      elements.bgColorBox.style.background = bgColor;
+      handleGradientValue(bgColor);
+    } else {
+      hideGradientPickers();
+    }
 
     // Box Model
     displayBoxModel(elementData.boxModel);
@@ -249,16 +273,200 @@
     if (response?.success) {
       showStatus(`✓ Applied: ${property} = ${value}`, 'success', 2000);
       
-      // 更新 color box 如果是颜色相关属性
+      // 更新 color box 和 color picker 如果是颜色相关属性
       if (property === 'color') {
+        const hexColor = rgbToHex(value) || value;
         elements.textColorBox.style.backgroundColor = value;
         elements.textColorBox2.style.backgroundColor = value;
+        if (elements.textColorPicker && hexColor.startsWith('#')) {
+          elements.textColorPicker.value = hexColor;
+        }
+        if (elements.textColorPicker2 && hexColor.startsWith('#')) {
+          elements.textColorPicker2.value = hexColor;
+        }
       } else if (property === 'background-color') {
+        const hexColor = rgbToHex(value) || value;
         elements.bgColorBox.style.backgroundColor = value;
+        if (elements.bgColorPicker && hexColor.startsWith('#')) {
+          elements.bgColorPicker.value = hexColor;
+        }
+        // 检查是否是渐变
+        if (value.includes('gradient')) {
+          handleGradientValue(value);
+        } else {
+          hideGradientPickers();
+        }
       }
     } else {
       showStatus(`✗ Failed to apply: ${response?.error || 'Unknown error'}`, 'error');
     }
+  }
+
+  // === 颜色格式转换 ===
+  
+  function rgbToHex(color) {
+    if (!color || color === 'transparent') return '#ffffff';
+    
+    // 如果已经是 hex 格式
+    if (color.startsWith('#')) {
+      return color.length === 7 ? color : color + 'ff';
+    }
+    
+    // 解析 rgb/rgba
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+    if (match) {
+      const r = parseInt(match[1]);
+      const g = parseInt(match[2]);
+      const b = parseInt(match[3]);
+      return '#' + [r, g, b].map(x => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+      }).join('');
+    }
+    
+    return null;
+  }
+
+  // === 处理渐变值 ===
+  
+  function handleGradientValue(gradientValue) {
+    if (!elements.bgGradientPickers) return;
+    
+    // 解析渐变字符串，提取颜色
+    const colors = parseGradientColors(gradientValue);
+    
+    if (colors.length > 0) {
+      // 显示渐变调色板容器
+      elements.bgGradientPickers.classList.remove('hidden');
+      elements.bgGradientPickers.innerHTML = '';
+      
+      // 为每个颜色创建紧凑的调色板
+      colors.forEach((colorInfo, index) => {
+        const item = document.createElement('div');
+        item.className = 'gradient-color-item';
+        item.title = `Gradient color ${index + 1}: ${colorInfo.color}`;
+        
+        const label = document.createElement('span');
+        label.className = 'gradient-color-label';
+        label.textContent = `${index + 1}`;
+        
+        const picker = document.createElement('input');
+        picker.type = 'color';
+        picker.className = 'gradient-color-picker';
+        picker.value = rgbToHex(colorInfo.color) || '#ffffff';
+        picker.dataset.index = index;
+        picker.dataset.originalGradient = gradientValue;
+        
+        // 调色板改变事件
+        picker.addEventListener('input', async (e) => {
+          const newColor = e.target.value;
+          
+          // 更新渐变字符串
+          const originalGradient = e.target.dataset.originalGradient;
+          const colorIndex = parseInt(e.target.dataset.index);
+          const newGradient = updateGradientColor(originalGradient, colorIndex, newColor);
+          
+          // 应用新的渐变
+          elements.bgColor.value = newGradient;
+          const response = await sendToContent('applyStyle', {
+            selector: state.currentElement.selector,
+            property: 'background',
+            value: newGradient
+          });
+          
+          if (response?.success) {
+            showStatus(`✓ Gradient color ${colorIndex + 1} updated`, 'success', 1500);
+            elements.bgColorBox.style.background = newGradient;
+            // 更新所有 picker 的 dataset
+            const allPickers = elements.bgGradientPickers.querySelectorAll('.gradient-color-picker');
+            allPickers.forEach(p => {
+              p.dataset.originalGradient = newGradient;
+            });
+          }
+        });
+        
+        item.appendChild(label);
+        item.appendChild(picker);
+        elements.bgGradientPickers.appendChild(item);
+      });
+    } else {
+      hideGradientPickers();
+    }
+  }
+
+  // === 隐藏渐变调色板 ===
+  
+  function hideGradientPickers() {
+    if (elements.bgGradientPickers) {
+      elements.bgGradientPickers.classList.add('hidden');
+      elements.bgGradientPickers.innerHTML = '';
+    }
+  }
+
+  // === 解析渐变颜色 ===
+  
+  function parseGradientColors(gradient) {
+    const colors = [];
+    
+    // 匹配各种颜色格式
+    const colorRegex = /(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)/gi;
+    
+    let match;
+    while ((match = colorRegex.exec(gradient)) !== null) {
+      const color = match[0];
+      // 过滤掉方向关键词
+      if (!['linear', 'radial', 'conic', 'to', 'top', 'bottom', 'left', 'right', 'deg', 'grad', 'turn'].includes(color.toLowerCase())) {
+        colors.push({
+          color: color,
+          position: match.index
+        });
+      }
+    }
+    
+    return colors;
+  }
+
+  // === 更新渐变中的某个颜色 ===
+  
+  function updateGradientColor(gradient, colorIndex, newColor) {
+    const colors = parseGradientColors(gradient);
+    if (colorIndex >= colors.length) return gradient;
+    
+    const targetColor = colors[colorIndex];
+    const startPos = targetColor.position;
+    const endPos = startPos + targetColor.color.length;
+    
+    return gradient.substring(0, startPos) + newColor + gradient.substring(endPos);
+  }
+
+  // === 调色板改变事件处理 ===
+  
+  async function handleColorPickerChange(picker, textInput, colorBox, property) {
+    const color = picker.value;
+    
+    if (textInput) {
+      textInput.value = color;
+    }
+    
+    if (colorBox) {
+      colorBox.style.backgroundColor = color;
+    }
+    
+    // 触发属性更改
+    if (state.currentElement) {
+      const response = await sendToContent('applyStyle', {
+        selector: state.currentElement.selector,
+        property,
+        value: color
+      });
+      
+      if (response?.success) {
+        showStatus(`✓ Applied: ${property} = ${color}`, 'success', 1500);
+      }
+    }
+    
+    // 隐藏渐变调色板（因为现在是纯色）
+    hideGradientPickers();
   }
 
   // === 复制选择器 ===
@@ -326,6 +534,34 @@
       });
     });
     
+    // color-box 点击触发调色板
+    if (elements.textColorBox && elements.textColorPicker) {
+      elements.textColorBox.addEventListener('click', () => {
+        elements.textColorPicker.click();
+      });
+      elements.textColorPicker.addEventListener('input', (e) => {
+        handleColorPickerChange(e.target, elements.textColor, elements.textColorBox, 'color');
+      });
+    }
+    
+    if (elements.textColorBox2 && elements.textColorPicker2) {
+      elements.textColorBox2.addEventListener('click', () => {
+        elements.textColorPicker2.click();
+      });
+      elements.textColorPicker2.addEventListener('input', (e) => {
+        handleColorPickerChange(e.target, elements.textColor2, elements.textColorBox2, 'color');
+      });
+    }
+    
+    if (elements.bgColorBox && elements.bgColorPicker) {
+      elements.bgColorBox.addEventListener('click', () => {
+        elements.bgColorPicker.click();
+      });
+      elements.bgColorPicker.addEventListener('input', (e) => {
+        handleColorPickerChange(e.target, elements.bgColor, elements.bgColorBox, 'background-color');
+      });
+    }
+    
     console.log('Event listeners setup complete');
   }
 
@@ -369,12 +605,16 @@
       fontWeight: document.getElementById('fontWeight'),
       textColor: document.getElementById('textColor'),
       textColorBox: document.getElementById('textColorBox'),
+      textColorPicker: document.getElementById('textColorPicker'),
       
       // Colors
       bgColor: document.getElementById('bgColor'),
       bgColorBox: document.getElementById('bgColorBox'),
+      bgColorPicker: document.getElementById('bgColorPicker'),
+      bgGradientPickers: document.getElementById('bgGradientPickers'),
       textColor2: document.getElementById('textColor2'),
       textColorBox2: document.getElementById('textColorBox2'),
+      textColorPicker2: document.getElementById('textColorPicker2'),
       
       // Box Model
       marginTop: document.getElementById('marginTop'),
