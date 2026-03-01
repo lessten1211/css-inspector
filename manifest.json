@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "CSS Inspector",
+  "name": "StyleProbe",
   "version": "1.0.0",
   "description": "查看、调试并临时更改页面元素的 CSS 样式",
   "permissions": [
@@ -16,7 +16,7 @@
     "service_worker": "service_worker.js"
   },
   "action": {
-    "default_title": "CSS Inspector"
+    "default_title": "StyleProbe"
   },
   "side_panel": {
     "default_path": "panel.html"

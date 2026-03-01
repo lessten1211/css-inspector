@@ -890,5 +890,5 @@
     }
   }, true);
 
-  console.log('CSS Inspector content script loaded');
+  console.log('StyleProbe content script loaded');
 })();

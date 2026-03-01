@@ -1,8 +1,8 @@
-# CSS Inspector
+# StyleProbe
 
 一个功能强大的 Chrome 扩展，用于查看、调试并临时更改页面元素的 CSS 样式。类似 Figma 的设计工具，提供直观的元素间距显示和实时样式编辑。
 
-![CSS Inspector Demo](https://i.imgur.com/c1ou3JU.png)
+![StyleProbe Demo](https://i.imgur.com/c1ou3JU.png)
 
 ## 安装步骤
 
@@ -29,7 +29,7 @@ cd css-inspector
 ### 基本使用
 
 1. **打开扩展**
-   - 点击浏览器工具栏中的 CSS Inspector 图标
+   - 点击浏览器工具栏中的 StyleProbe 图标
    - Side Panel 会在右侧打开
 
 2. **选择元素**
@@ -64,7 +64,6 @@ cd css-inspector
 - **样式过滤**：在 "Filter properties..." 输入框中输入关键词快速查找属性
 - **复制选择器**：点击选择器旁的复制按钮快速复制
 - **刷新元素**：点击刷新按钮重新获取元素最新状态
-- **清除修改**：点击 "Clear All" 一键撤销所有修改
 
 ## 项目结构
 
@@ -159,7 +158,7 @@ MIT License
 
 ## 作者
 
-CSS Inspector Extension Team
+StyleProbe Extension Team
 
 ---
 

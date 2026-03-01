@@ -64,7 +64,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // 安装时初始化
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('CSS Inspector extension installed12');
+  console.log('StyleProbe extension installed12');
   
   // 设置默认配置
   chrome.storage.local.set({

@@ -568,7 +568,7 @@
   // === 初始化 ===
   
   function init() {
-    console.log('=== CSS Inspector panel init() called ===');
+    console.log('=== StyleProbe panel init() called ===');
     
     // 初始化所有 DOM 元素引用
     elements = {
