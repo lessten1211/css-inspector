@@ -21,7 +21,8 @@
     highlightOverlay: null,
     selectedOverlay: null,
     spacingOverlays: [], // 间距显示层
-    spacingDebounceTimer: null
+    spacingDebounceTimer: null,
+    hoverDebounceTimer: null // 蓝框悬停延时定时器
   };
 
   // === 创建高亮覆盖层 ===
@@ -405,20 +406,6 @@
     }
   }
 
-  // === 隐藏覆盖层 ===
-  function hideOverlay(overlay) {
-    if (overlay) {
-      overlay.style.display = 'none';
-    }
-  }
-
-  // === 显示覆盖层 ===
-  function showOverlay(overlay) {
-    if (overlay) {
-      overlay.style.display = 'block';
-    }
-  }
-
   // === 生成唯一选择器 ===
   function generateSelector(element) {
     if (!element || element === document.body) return 'body';
@@ -564,50 +551,66 @@
 
     // 忽略我们自己创建的覆盖层
     let target = e.target;
-    if (target.classList && (target.classList.contains('css-inspector-overlay') || 
+    if (target.classList && (target.classList.contains('css-inspector-overlay') ||
         target.classList.contains('css-inspector-spacing-label') ||
         target.classList.contains('css-inspector-spacing-line'))) {
       return;
     }
 
-    // 更新 hover 状态
+    // 过滤掉body和html元素，避免鼠标移出窗口时选中它们
+    if (target === document.body || target === document.documentElement) {
+      // 清除之前的悬停延时定时器
+      if (state.hoverDebounceTimer) {
+        clearTimeout(state.hoverDebounceTimer);
+      }
+      return;
+    }
+
+    // 只有鼠标移动到新元素时才处理
     if (state.hoveredElement !== target) {
-      state.hoveredElement = target;
-      
-      if (!state.highlightOverlay) {
-        state.highlightOverlay = createOverlay('hover');
+      // 清除之前的悬停延时定时器
+      if (state.hoverDebounceTimer) {
+        clearTimeout(state.hoverDebounceTimer);
       }
       
-      showOverlay(state.highlightOverlay);
-      updateOverlay(state.highlightOverlay, target);
-      
-      // 清除之前的防抖计时器
-      if (state.spacingDebounceTimer) {
-        clearTimeout(state.spacingDebounceTimer);
-      }
-      
-      // 清除旧的间距显示
-      clearSpacingOverlays();
-      
-      // 只有在已选中元素时，才显示间距（鼠标停止 300ms 后）
-      if (state.selectedElement) {
-        state.spacingDebounceTimer = setTimeout(() => {
-          showSpacingInfo(state.selectedElement, target);
-        }, 300);
-      }
+      // 只有在当前元素上停留满150ms，蓝框才会移动过来
+      state.hoverDebounceTimer = setTimeout(() => {
+        // 更新悬停元素
+        state.hoveredElement = target;
+        
+        if (!state.highlightOverlay) {
+          state.highlightOverlay = createOverlay('hover');
+        }
+        
+        showOverlay(state.highlightOverlay);
+        updateOverlay(state.highlightOverlay, target);
+        
+        // 清除之前的间距防抖计时器
+        if (state.spacingDebounceTimer) {
+          clearTimeout(state.spacingDebounceTimer);
+        }
+        
+        // 清除旧的间距显示
+        clearSpacingOverlays();
+        
+        // 只有在已选中元素时，才显示间距（鼠标停止 300ms 后）
+        if (state.selectedElement) {
+          state.spacingDebounceTimer = setTimeout(() => {
+            showSpacingInfo(state.selectedElement, target);
+          }, 300);
+        }
+      }, 33); // 停留50ms后才移动蓝框
     }
   }
 
   // === 点击处理 ===
   function handleClick(e) {
-    console.log('handleClick called, isPickingMode:', state.isPickingMode);
     if (!state.isPickingMode) return;
 
     e.preventDefault();
     e.stopPropagation();
 
     let target = e.target;
-    console.log('Clicked element:', target);
     if (target.classList && (target.classList.contains('css-inspector-overlay') ||
         target.classList.contains('css-inspector-spacing-label') ||
         target.classList.contains('css-inspector-spacing-line'))) {
@@ -634,6 +637,11 @@
       state.spacingDebounceTimer = null;
     }
     
+    if (state.hoverDebounceTimer) {
+      clearTimeout(state.hoverDebounceTimer);
+      state.hoverDebounceTimer = null;
+    }
+    
     // 清除间距显示（选中元素后，需要悬停其他元素才会显示间距）
     clearSpacingOverlays();
 
@@ -647,23 +655,14 @@
 
   // === 启动选择模式 ===
   function startPickingMode() {
-    console.log('startPickingMode called');
     state.isPickingMode = true;
     document.body.style.cursor = 'crosshair';
     
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);
-    console.log('Event listeners added, picking mode active');
   }
 
   // === 停止选择模式 ===
-    clearSpacingOverlays();
-    
-    // 清除防抖计时器
-    if (state.spacingDebounceTimer) {
-      clearTimeout(state.spacingDebounceTimer);
-      state.spacingDebounceTimer = null;
-    }
   function stopPickingMode() {
     state.isPickingMode = false;
     document.body.style.cursor = '';
@@ -680,10 +679,15 @@
     // 清除间距显示
     clearSpacingOverlays();
     
-    // 清除防抖计时器
+    // 清除所有防抖计时器
     if (state.spacingDebounceTimer) {
       clearTimeout(state.spacingDebounceTimer);
       state.spacingDebounceTimer = null;
+    }
+    
+    if (state.hoverDebounceTimer) {
+      clearTimeout(state.hoverDebounceTimer);
+      state.hoverDebounceTimer = null;
     }
     
     // 清除元素引用
@@ -776,7 +780,6 @@
 
   // === 发送消息到 panel ===
   function sendToPanel(action, data) {
-    console.log('sendToPanel called with action:', action, 'data:', data);
     chrome.runtime.sendMessage({
       action: 'forwardToPanel',
       data: { action, data }
@@ -787,16 +790,13 @@
 
   // === 监听来自 panel 的消息 ===
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('Content script received message:', request);
     try {
       switch (request.action || request.type) {
         case 'ping':
-          console.log('Ping received, responding...');
           sendResponse({ success: true });
           break;
 
         case 'startPicking':
-          console.log('startPicking message received');
           startPickingMode();
           sendResponse({ success: true });
           break;
@@ -807,8 +807,6 @@
           break;
         
         case 'cleanup':
-          // 清理所有覆盖层和状态（插件关闭时）
-          console.log('cleanup message received');
           stopPickingMode();
           sendResponse({ success: true });
           break;
