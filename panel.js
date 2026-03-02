@@ -180,10 +180,11 @@
     elements.elemPosition.value = styles.position || '';
 
     // Text Properties
-    elements.fontFamily.value = styles.fontFamily || '';
-    elements.fontSize.value = styles.fontSize || '';
-    elements.lineHeight.value = styles.lineHeight || '';
-    elements.fontWeight.value = styles.fontWeight || '';
+    // 兼容不同的属性命名方式
+    elements.fontFamily.value = styles['font-family'] || styles.fontFamily || '';
+    elements.fontSize.value = styles['font-size'] || styles.fontSize || '';
+    elements.lineHeight.value = styles['line-height'] || styles.lineHeight || '';
+    elements.fontWeight.value = styles['font-weight'] || styles.fontWeight || '';
     
     const color = styles.color || '#000000';
     const colorHex = rgbToHex(color) || color;
