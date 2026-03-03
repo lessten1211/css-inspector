@@ -13,8 +13,6 @@ git clone https://github.com/lessten1211/css-inspector.git
 cd css-inspector
 ```
 
-或直接下载 ZIP 并解压。
-
 ### 2. 在 Chrome 中加载扩展
 
 1. 打开 Chrome 浏览器
